@@ -2,6 +2,8 @@ import os
 import logging
 import datetime as dt
 import requests
+import random
+from requests.exceptions import RequestException, Timeout
 from telegram import ParseMode
 from telegram.ext import Updater, CommandHandler
 from main import Engineers, config, TrustedChats, Session
@@ -57,6 +59,7 @@ def start(bot, update):
 
 def whoshere(bot, update):
     result = False
+    bot.send_chat_action(chat_id=update.message.chat_id, action='typing')
     if is_trusted(update.message.chat_id):
         res = '<b>These engineers are on shift now:</b>\n\n'
         engs = Engineers()
@@ -81,6 +84,7 @@ def whoshere(bot, update):
 
 def whostl(bot, update):
     result = False
+    bot.send_chat_action(chat_id=update.message.chat_id, action='typing')
     if is_trusted(update.message.chat_id):
         res = '<b>Shared TLs IP phone: 70777. These TLs are on shift now:</b>\n\n'
         engs = Engineers()
@@ -106,6 +110,7 @@ def whostl(bot, update):
 
 def whossme(bot, update):
     result = False
+    bot.send_chat_action(chat_id=update.message.chat_id, action='typing')
     if is_trusted(update.message.chat_id):
         res = '<b>These SMEs are on shift now:</b>\n\n'
         engs = Engineers()
@@ -131,20 +136,39 @@ def cat(bot, update):
     result = False
     if is_trusted(update.message.chat_id):
         result = True
-        contents = requests.get('http://aws.random.cat/meow').json()
-        url = contents['file']
-        exp_url = url[-4:]
-        file_name = url.split('/')[-1]
+        try:
+            contents = requests.get('http://aws.random.cat/meow', timeout=5).json()
+            url = contents['file']
+            file_name = url.split('/')[-1]
+            logging.debug("All ok")
+        except Timeout:
+            logging.error("Time out while request cat")
+            list_cat = os.listdir("tmp/cat/")
+            if len(list_cat) > 0:
+                file_name = random.choice(list_cat)
+            else:
+                logging.error("No cats in tmp dir")
+                return
+        except RequestException:
+            logging.error("Many error while request cat")
+            return
+        exp_url = file_name[-4:]
         if not os.path.isfile('tmp/cat/'+file_name):
             r = requests.get(url, allow_redirects=True)
             open('tmp/cat/'+file_name, 'wb').write(r.content)
         if exp_url == '.mp4':
+            bot.send_chat_action(chat_id=update.message.chat_id,
+                                 action='upload_video')
             bot.send_video(chat_id=update.message.chat_id,
                            video=open('tmp/cat/'+file_name, 'rb'))
         elif exp_url == '.gif':
+            bot.send_chat_action(chat_id=update.message.chat_id,
+                                 action='upload_video')
             bot.send_document(chat_id=update.message.chat_id,
                               document=open('tmp/cat/'+file_name, 'rb'))
         else:
+            bot.send_chat_action(chat_id=update.message.chat_id,
+                                 action='upload_photo')
             bot.send_photo(chat_id=update.message.chat_id,
                            photo=open('tmp/cat/'+file_name, 'rb'))
     else:
